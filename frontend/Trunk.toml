@@ -1,0 +1,15 @@
+# Configurazione di Trunk (build e dev server del frontend).
+[build]
+target = "index.html"
+dist = "dist"
+
+# In sviluppo il dev server di Trunk inoltra le chiamate al backend Axum,
+# così frontend e API hanno la stessa origine (niente CORS in locale).
+# Nota: con trunk >= 0.22 (axum 0.8 interno) il pattern è un prefisso senza `*`.
+[[proxy]]
+rewrite = "/api"
+backend = "http://localhost:3000/api"
+
+[[proxy]]
+rewrite = "/uploads"
+backend = "http://localhost:3000/uploads"

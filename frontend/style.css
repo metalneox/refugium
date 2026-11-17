@@ -1,0 +1,363 @@
+/* Refugium — stile dell'interfaccia */
+
+:root {
+    --bg: #faf6f1;
+    --surface: #ffffff;
+    --text: #2b2320;
+    --muted: #7a6a5f;
+    --accent: #d9694b;
+    --accent-dark: #b9542f;
+    --border: #eadfd6;
+    --radius: 14px;
+    --shadow: 0 2px 10px rgba(43, 35, 32, 0.08);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+}
+
+.app {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 1.25rem 3rem;
+}
+
+/* Header: brand a sinistra, menu a destra */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand h1 {
+    margin: 0;
+    font-size: 1.7rem;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+}
+
+.subtitle {
+    margin: 0.15rem 0 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.nav-button {
+    font: inherit;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    padding: 0.55rem 1.1rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+.nav-button:hover {
+    background: var(--accent-dark);
+}
+
+/* Card generiche */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.form-card {
+    padding: 1.5rem 1.75rem;
+}
+
+h2 {
+    margin: 0 0 1.25rem;
+    font-size: 1.25rem;
+}
+
+/* Form */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.9rem 1.25rem;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.field-full {
+    grid-column: 1 / -1;
+}
+
+.field input,
+.field textarea {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.55rem 0.75rem;
+    resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: transparent;
+}
+
+/* Validazione: campo in errore e messaggio sotto il campo */
+.field.invalid input,
+.field.invalid textarea {
+    border-color: #d97b6c;
+    background: #fdf5f3;
+}
+
+.field.invalid input:focus,
+.field.invalid textarea:focus {
+    outline-color: #d97b6c;
+}
+
+.field-error {
+    font-size: 0.82rem;
+    color: #9c2b22;
+}
+
+/* Contatore caratteri della descrizione */
+.field-counter {
+    align-self: flex-end;
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+.field-counter.warn {
+    color: #c77b28;
+}
+
+.field-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.alert {
+    margin: 1rem 0 0;
+    padding: 0.7rem 1rem;
+    border-radius: 10px;
+    font-size: 0.92rem;
+}
+
+.alert-error {
+    background: #fdeceb;
+    color: #9c2b22;
+    border: 1px solid #f5c6c1;
+}
+
+.alert-success {
+    background: #e8f6ec;
+    color: #1e6b39;
+    border: 1px solid #bfe4cb;
+}
+
+.button {
+    margin-top: 1.25rem;
+    font: inherit;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    padding: 0.65rem 1.5rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+    background: var(--accent-dark);
+}
+
+.button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* Galleria delle foto (prima schermata) */
+.gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.gallery-item {
+    position: relative;
+    display: block;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--border);
+    box-shadow: var(--shadow);
+}
+
+.gallery-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.2s ease;
+}
+
+.gallery-item:hover .gallery-photo,
+.gallery-item:focus-visible .gallery-photo {
+    transform: scale(1.05);
+}
+
+.gallery-name {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 2rem 0.75rem 0.6rem;
+    text-align: left;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(transparent, rgba(20, 14, 11, 0.72));
+}
+
+/* Modale di dettaglio dell'annuncio */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(20, 14, 11, 0.55);
+}
+
+.modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 1;
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.95rem;
+    line-height: 1;
+    color: #fff;
+    background: rgba(20, 14, 11, 0.6);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.modal-close:hover {
+    background: rgba(20, 14, 11, 0.8);
+}
+
+.dog-card {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.dog-photo {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: var(--border);
+}
+
+.dog-body {
+    padding: 1rem 1.15rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    flex: 1;
+}
+
+.dog-name {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.tag {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent-dark);
+    background: #fbeee7;
+    border-radius: 999px;
+    padding: 0.15rem 0.65rem;
+}
+
+.dog-description {
+    margin: 0.2rem 0 0;
+    font-size: 0.92rem;
+    color: var(--text);
+}
+
+.dog-contact,
+.dog-date {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.loading,
+.empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 1.5rem 0;
+}
+
+/* Footer */
+.footer {
+    margin-top: 3rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
