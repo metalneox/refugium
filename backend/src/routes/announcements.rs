@@ -1,14 +1,15 @@
 //! Endpoint per gli annunci dei cani.
 
+use axum::Json;
 use axum::extract::multipart::Field;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use shared::Announcement;
 
+use crate::AppState;
+use crate::auth::AuthUser as Authenticated;
 use crate::db::AnnouncementRow;
 use crate::error::ApiError;
-use crate::AppState;
 
 /// Dimensione massima dell'immagine: 10 MB.
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
@@ -48,8 +49,10 @@ pub async fn get_by_id(
 ///
 /// Campi testuali: `dog_name`, `breed`, `age`, `city`, `description`, `contact`.
 /// Campo binario: `image` (png/jpeg/webp/gif).
+/// Richiede `Authorization: Bearer <token>`: la lettura resta pubblica, la scrittura no.
 pub async fn create(
     State(state): State<AppState>,
+    authenticated: Authenticated,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<Announcement>), ApiError> {
     let mut dog_name = String::new();
@@ -72,7 +75,10 @@ pub async fn create(
             "image" => {
                 let content_type = field.content_type().unwrap_or_default().to_string();
                 let bytes = field.bytes().await?.to_vec();
-                image = Some(ImageUpload { content_type, bytes });
+                image = Some(ImageUpload {
+                    content_type,
+                    bytes,
+                });
             }
             // Ignora eventuali campi extra inviati dal client.
             _ => {
@@ -83,7 +89,9 @@ pub async fn create(
 
     // Validazione dei campi obbligatori.
     if dog_name.is_empty() {
-        return Err(ApiError::BadRequest("Il nome del cane è obbligatorio".into()));
+        return Err(ApiError::BadRequest(
+            "Il nome del cane è obbligatorio".into(),
+        ));
     }
     if description.is_empty() {
         return Err(ApiError::BadRequest("La descrizione è obbligatoria".into()));
@@ -150,7 +158,12 @@ pub async fn create(
         created_at,
     };
 
-    tracing::info!("Creato annuncio {} ({})", announcement.id, announcement.dog_name);
+    tracing::info!(
+        "Creato annuncio {} ({}) da {}",
+        announcement.id,
+        announcement.dog_name,
+        authenticated.email
+    );
 
     Ok((StatusCode::CREATED, Json(announcement)))
 }

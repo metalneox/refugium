@@ -18,6 +18,7 @@ L'intero progetto è scritto in **Rust**, organizzato come monorepo:
 ## Indice
 
 - [Architettura](#architettura)
+- [Autenticazione](#autenticazione)
 - [Requisiti](#requisiti)
 - [Avvio rapido (sviluppo)](#avvio-rapido-sviluppo)
 - [Avvio con un solo comando (`run.sh`)](#avvio-con-un-solo-comando-runsh)
@@ -36,7 +37,8 @@ refugium/
 ├── backend/                # 🖥️ API Axum
 │   └── src/
 │       ├── main.rs         #   avvio server, CORS, serving statico
-│       ├── routes/         #   endpoint: elenco, dettaglio, creazione annunci
+│       ├── auth.rs         #   hash Argon2, JWT HS256, estrattore Bearer
+│       ├── routes/         #   endpoint: annunci + register/login/me
 │       ├── db.rs           #   schema SQLite + query (sqlx)
 │       └── error.rs        #   errori JSON ({ "error": "..." })
 ├── frontend/               # 🌐 SPA Leptos (WASM)
@@ -45,24 +47,45 @@ refugium/
 │   ├── style.css           #   stile dell'interfaccia
 │   └── src/
 │       ├── main.rs         #   mount dell'app
-│       ├── app.rs          #   UI: galleria foto, menu «Inserisci», form con validazioni
-│       └── api.rs          #   chiamate fetch all'API (via web-sys)
+│       ├── app.rs          #   UI: galleria, «Inserisci», login/registrazione, form
+│       └── api.rs          #   chiamate API + salvataggio JWT (via web-sys)
 └── shared/                 # 📦 tipi condivisi (nativo + wasm32)
-    └── src/lib.rs          #   struct Announcement usata da entrambi
+    └── src/lib.rs          #   Announcement, Credentials, AuthUser, AuthResponse
 ```
 
 **Come collaborano i tre crate:**
 
 | Crate    | Target                  | Ruolo                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------- |
-| `backend`  | nativo (`x86_64`)       | API HTTP, validazione upload, SQLite, serving delle immagini      |
-| `frontend` | `wasm32-unknown-unknown` | interfaccia nel browser: galleria, menu, form degli annunci         |
-| `shared`   | entrambi                | il tipo `Announcement` identico su API e UI (niente duplicazioni) |
+| `backend`  | nativo (`x86_64`)       | API HTTP, auth (Argon2 + JWT), upload, SQLite, immagini             |
+| `frontend` | `wasm32-unknown-unknown` | UI browser: galleria, login/registrazione, menu, form annunci        |
+| `shared`   | entrambi                | tipi condivisi API/UI (`Announcement`, tipi di autenticazione)      |
 
 **Flusso di un annuncio:**
-il browser compila il form → `fetch` POST multipart verso `/api/announcements` →
-il backend valida i campi e l'immagine → salva la foto in `data/uploads/` e la riga in SQLite →
+l'utente si registra/accede → il JWT viene salvato in `localStorage` → il browser compila il form →
+`fetch` POST multipart con `Authorization: Bearer <token>` verso `/api/announcements` →
+il backend valida token, campi e immagine → salva la foto in `data/uploads/` e la riga in SQLite →
 risponde con il JSON dell'annuncio → la UI torna alla galleria, dove la nuova foto è già visibile.
+
+## Autenticazione
+
+La lettura degli annunci è **pubblica**; per **pubblicare** serve un account. Nel menu in alto a destra
+c'è `+ Inserisci`: senza una sessione attiva apre il pannello di accesso/registrazione,
+altrimenti apre direttamente il form dell'annuncio.
+
+- **Registrazione** — `POST /api/auth/register` con `{ "email", "password" }`
+- **Accesso** — `POST /api/auth/login` con lo stesso payload
+- **Utente corrente** — `GET /api/auth/me` con il Bearer token (ripristina la sessione al reload)
+- **Logout** — basta rimuovere il token da `localStorage` (pulsante «Esci»)
+
+Le password vengono salvate solo come **hash Argon2** (mai in chiaro). Il server emette un
+**JWT (HS256)** valido 7 giorni; il browser lo conserva in `localStorage` e lo invia come
+`Authorization: Bearer <token>` durante la creazione dell'annuncio. Regole: email plausibile,
+password tra 8 e 128 caratteri, email univoca (`409` in caso di duplicati).
+
+> In produzione imposta `REFUGIUM_JWT_SECRET` con un valore casuale lungo: senza questa
+> variabile viene usata una chiave di sola sviluppo e all'avvio viene stampato un avviso.
+> Cambiare la chiave invalida tutti i token esistenti.
 
 ## Requisiti
 
@@ -147,14 +170,35 @@ In produzione un **solo processo** espone tutto: l'API su `/api/*`, le immagini 
 
 Base URL: `http://localhost:3000`
 
-| Metodo | Endpoint                   | Descrizione                             |
-| ------ | -------------------------- | --------------------------------------- |
-| GET    | `/api/announcements`       | Elenco di tutti gli annunci (dal più recente) |
-| GET    | `/api/announcements/:id`   | Dettaglio di un singolo annuncio        |
-| POST   | `/api/announcements`       | Crea un annuncio (`multipart/form-data`) |
-| GET    | `/health`                  | Probe di stato: `{"status":"ok"}`       |
+| Metodo | Endpoint                   | Auth     | Descrizione                             |
+| ------ | -------------------------- | -------- | --------------------------------------- |
+| GET    | `/api/announcements`       | pubblico | Elenco di tutti gli annunci (dal più recente) |
+| GET    | `/api/announcements/:id`   | pubblico | Dettaglio di un singolo annuncio        |
+| POST   | `/api/announcements`       | **JWT**  | Crea un annuncio (`multipart/form-data`) |
+| POST   | `/api/auth/register`       | pubblico | Crea un account, restituisce token + utente |
+| POST   | `/api/auth/login`          | pubblico | Accede, restituisce token + utente      |
+| GET    | `/api/auth/me`             | **JWT**  | Dati dell'utente corrente               |
+| GET    | `/health`                  | pubblico | Probe di stato: `{"status":"ok"}`       |
+
+### Endpoint di autenticazione
+
+```sh
+# Registrazione (oppure /api/auth/login per accedere in seguito)
+curl -X POST http://localhost:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"mario@example.com","password":"password123"}'
+# → 201 {"token":"<JWT>","user":{"id":"...","email":"mario@example.com","created_at":"..."}}
+
+# Usa il token sugli endpoint protetti
+curl -H 'Authorization: Bearer <JWT>' http://localhost:3000/api/auth/me
+```
+
+Errori: `400` email/password non valide, `401` credenziali o token mancanti/non validi,
+`409` email già registrata.
 
 ### Campi del POST (`multipart/form-data`)
+
+Richiede l'header `Authorization: Bearer <JWT>`.
 
 | Campo         | Tipo     | Obbligatorio | Note                                  |
 | ------------- | -------- | ------------ | ------------------------------------- |
@@ -172,6 +216,7 @@ Creare un annuncio:
 
 ```sh
 curl -X POST http://localhost:3000/api/announcements \
+  -H 'Authorization: Bearer <JWT>' \
   -F 'dog_name=Rocky' \
   -F 'breed=Meticcio' \
   -F 'age=3 anni' \
@@ -210,6 +255,9 @@ Errori tipici (HTTP 400, corpo JSON `{ "error": "..." }`):
 {"error":"Il nome del cane è obbligatorio"}
 {"error":"Tipo di immagine non supportato: text/plain"}
 {"error":"L'immagine supera i 10 MB"}
+{"error":"Autenticazione richiesta"}
+{"error":"Token non valido o scaduto: accedi di nuovo"}
+{"error":"Email già registrata"}
 ```
 
 ## Configurazione
@@ -221,11 +269,15 @@ Tutte le impostazioni sono variabili d'ambiente con valori predefiniti sensati:
 | `REFUGIUM_ADDR`        | `0.0.0.0:3000`                  | indirizzo e porta del backend      |
 | `REFUGIUM_DB_URL`      | `sqlite://data/refugium.db?mode=rwc` | connessione SQLite (crea il file se manca) |
 | `REFUGIUM_UPLOADS_DIR` | `data/uploads`                  | cartella dove salvare le immagini  |
+| `REFUGIUM_JWT_SECRET`  | chiave di sviluppo predefinita  | chiave per firmare i JWT (impostala in produzione) |
 
 Esempio:
 
 ```sh
-REFUGIUM_ADDR=0.0.0.0:8081 REFUGIUM_DB_URL=sqlite://./refugium.db?mode=rwc cargo run -p backend
+REFUGIUM_ADDR=0.0.0.0:8081 \
+REFUGIUM_JWT_SECRET='una-chiave-casuale-lunga' \
+REFUGIUM_DB_URL=sqlite://./refugium.db?mode=rwc \
+cargo run -p backend
 ```
 
 Niente da configurare a mano: database e cartella upload vengono **creati automaticamente**

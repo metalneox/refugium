@@ -18,6 +18,7 @@ The whole project is written in **Rust**, organised as a monorepo:
 ## Table of contents
 
 - [Architecture](#architecture)
+- [Authentication](#authentication)
 - [Requirements](#requirements)
 - [Quick start (development)](#quick-start-development)
 - [One-command start (`run.sh`)](#one-command-start-runsh)
@@ -36,7 +37,8 @@ refugium/
 ├── backend/                # 🖥️ Axum API
 │   └── src/
 │       ├── main.rs         #   server startup, CORS, static file serving
-│       ├── routes/         #   endpoints: list, detail, creation of listings
+│       ├── auth.rs         #   Argon2 hashing, JWT HS256, Bearer extractor
+│       ├── routes/         #   endpoints: listings + register/login/me
 │       ├── db.rs           #   SQLite schema + queries (sqlx)
 │       └── error.rs        #   JSON errors ({ "error": "..." })
 ├── frontend/               # 🌐 Leptos SPA (WASM)
@@ -45,24 +47,45 @@ refugium/
 │   ├── style.css           #   UI stylesheet
 │   └── src/
 │       ├── main.rs         #   app mount
-│       ├── app.rs          #   UI: photo gallery, «Insert» menu, form with validation
-│       └── api.rs          #   fetch calls to the API (via web-sys)
+│       ├── app.rs          #   UI: gallery, «Insert», login/register, validated form
+│       └── api.rs          #   API calls + JWT storage (via web-sys)
 └── shared/                 # 📦 shared types (native + wasm32)
-    └── src/lib.rs          #   the Announcement struct used by both
+    └── src/lib.rs          #   Announcement, Credentials, AuthUser, AuthResponse
 ```
 
 **How the three crates cooperate:**
 
 | Crate      | Target                   | Role                                                                 |
 | ---------- | ------------------------ | -------------------------------------------------------------------- |
-| `backend`  | native (`x86_64`)        | HTTP API, upload validation, SQLite, image serving                   |
-| `frontend` | `wasm32-unknown-unknown` | browser interface: gallery, menu, listing form                       |
-| `shared`   | both                     | the `Announcement` type shared by API and UI (no duplication)        |
+| `backend`  | native (`x86_64`)        | HTTP API, auth (Argon2 + JWT), upload validation, SQLite, images      |
+| `frontend` | `wasm32-unknown-unknown` | browser UI: gallery, login/register, menu, listing form               |
+| `shared`   | both                     | types shared by API and UI (`Announcement`, auth types)               |
 
 **Lifecycle of a listing:**
-the browser fills in the form → multipart POST `fetch` to `/api/announcements` →
-the backend validates the fields and the image → saves the photo in `data/uploads/` and the row in SQLite →
+the user registers/logs in → the JWT is saved in `localStorage` → the browser fills in the form →
+multipart POST `fetch` with `Authorization: Bearer <token>` to `/api/announcements` →
+the backend validates the token, fields and image → saves the photo in `data/uploads/` and the row in SQLite →
 replies with the listing JSON → the UI returns to the gallery, where the new photo is already visible.
+
+## Authentication
+
+Reading announcements is **public**; **posting requires an account**. The frontend shows
+`+ Inserisci` in the top-right menu: if no session is active it opens the login/register
+panel, otherwise it opens the listing form directly.
+
+- **Registration** — `POST /api/auth/register` with `{ "email", "password" }`
+- **Login** — `POST /api/auth/login` with the same payload
+- **Current user** — `GET /api/auth/me` with the Bearer token (restores the session on reload)
+- **Logout** — just remove the token from `localStorage` (the "Esci" button does this)
+
+Passwords are stored only as **Argon2 hashes** (never in plain text). The server issues a
+**JWT (HS256)** valid for 7 days; the browser keeps it in `localStorage` and sends it as
+`Authorization: Bearer <token>` on listing creation. Rules: plausible email, password
+between 8 and 128 characters, unique email (`409` on duplicates).
+
+> For production, set `REFUGIUM_JWT_SECRET` to a long random value: without it a
+> development-only default key is used and a warning is logged at startup. Changing the
+> secret invalidates all existing tokens.
 
 ## Requirements
 
@@ -147,14 +170,35 @@ on `/uploads/*` and the site as the fallback on `/`.
 
 Base URL: `http://localhost:3000`
 
-| Method | Endpoint                  | Description                                      |
-| ------ | ------------------------- | ------------------------------------------------ |
-| GET    | `/api/announcements`      | List of all listings (newest first)              |
-| GET    | `/api/announcements/:id`  | Detail of a single listing                       |
-| POST   | `/api/announcements`      | Create a listing (`multipart/form-data`)         |
-| GET    | `/health`                 | Health probe: `{"status":"ok"}`                  |
+| Method | Endpoint                  | Auth   | Description                                      |
+| ------ | ------------------------- | ------ | ------------------------------------------------ |
+| GET    | `/api/announcements`      | public | List of all listings (newest first)              |
+| GET    | `/api/announcements/:id`  | public | Detail of a single listing                       |
+| POST   | `/api/announcements`      | **JWT** | Create a listing (`multipart/form-data`)        |
+| POST   | `/api/auth/register`      | public | Create an account, returns token + user          |
+| POST   | `/api/auth/login`         | public | Log in, returns token + user                     |
+| GET    | `/api/auth/me`            | **JWT** | Current user data                                |
+| GET    | `/health`                 | public | Health probe: `{"status":"ok"}`                  |
+
+### Authentication endpoints
+
+```sh
+# Register (or use /api/auth/login to sign in later)
+curl -X POST http://localhost:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"mario@example.com","password":"password123"}'
+# → 201 {"token":"<JWT>","user":{"id":"...","email":"mario@example.com","created_at":"..."}}
+
+# Use the token for protected endpoints
+curl -H 'Authorization: Bearer <JWT>' http://localhost:3000/api/auth/me
+```
+
+Errors: `400` invalid email/password rules, `401` bad credentials or missing/invalid token,
+`409` email already registered.
 
 ### POST fields (`multipart/form-data`)
+
+Requires the `Authorization: Bearer <JWT>` header.
 
 | Field         | Type   | Required | Notes                                 |
 | ------------- | ------ | -------- | ------------------------------------- |
@@ -172,6 +216,7 @@ Creating a listing:
 
 ```sh
 curl -X POST http://localhost:3000/api/announcements \
+  -H 'Authorization: Bearer <JWT>' \
   -F 'dog_name=Rocky' \
   -F 'breed=Mutt' \
   -F 'age=3 years' \
@@ -210,6 +255,9 @@ Typical errors (HTTP 400, JSON body `{ "error": "..." }`; backend messages are i
 {"error":"Il nome del cane è obbligatorio"}
 {"error":"Tipo di immagine non supportato: text/plain"}
 {"error":"L'immagine supera i 10 MB"}
+{"error":"Autenticazione richiesta"}
+{"error":"Token non valido o scaduto: accedi di nuovo"}
+{"error":"Email già registrata"}
 ```
 
 ## Configuration
@@ -221,11 +269,15 @@ All settings are environment variables with sensible defaults:
 | `REFUGIUM_ADDR`        | `0.0.0.0:3000`                       | backend address and port                     |
 | `REFUGIUM_DB_URL`      | `sqlite://data/refugium.db?mode=rwc` | SQLite connection (creates the file if missing) |
 | `REFUGIUM_UPLOADS_DIR` | `data/uploads`                       | folder where images are saved                |
+| `REFUGIUM_JWT_SECRET`  | development-only default key         | secret used to sign JWTs (set it in production) |
 
 Example:
 
 ```sh
-REFUGIUM_ADDR=0.0.0.0:8081 REFUGIUM_DB_URL=sqlite://./refugium.db?mode=rwc cargo run -p backend
+REFUGIUM_ADDR=0.0.0.0:8081 \
+REFUGIUM_JWT_SECRET='a-long-random-secret' \
+REFUGIUM_DB_URL=sqlite://./refugium.db?mode=rwc \
+cargo run -p backend
 ```
 
 Nothing to set up by hand: the database and the upload folder are **created automatically**

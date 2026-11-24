@@ -22,3 +22,25 @@ pub struct Announcement {
     /// Timestamp di pubblicazione (RFC 3339).
     pub created_at: String,
 }
+
+/// Utente registrato (senza dati sensibili: mai la password).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthUser {
+    pub id: String,
+    pub email: String,
+    pub created_at: String,
+}
+
+/// Credenziali inviate dal frontend per registrazione e login.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Credentials {
+    pub email: String,
+    pub password: String,
+}
+
+/// Risposta di registrazione/login: token JWT + dati dell'utente.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthResponse {
+    pub token: String,
+    pub user: AuthUser,
+}

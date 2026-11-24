@@ -1,8 +1,17 @@
 //! Schema del database (SQLite).
 
 use shared::Announcement;
-use sqlx::sqlite::SqlitePool;
 use sqlx::FromRow;
+use sqlx::sqlite::SqlitePool;
+
+/// Riga della tabella `users` così com'è su disco.
+#[derive(Debug, FromRow)]
+pub struct UserRow {
+    pub id: String,
+    pub email: String,
+    pub password_hash: String,
+    pub created_at: String,
+}
 
 /// Riga della tabella `announcements` così com'è su disco.
 #[derive(Debug, FromRow)]
@@ -47,6 +56,20 @@ pub async fn ensure_schema(pool: &SqlitePool) -> anyhow::Result<()> {
             city           TEXT,
             contact        TEXT NOT NULL,
             image_path     TEXT NOT NULL,
+            created_at     TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Utenti registrati: la password è salvata solo come hash Argon2.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id             TEXT PRIMARY KEY,
+            email          TEXT NOT NULL UNIQUE,
+            password_hash  TEXT NOT NULL,
             created_at     TEXT NOT NULL
         )
         "#,

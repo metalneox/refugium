@@ -1,15 +1,20 @@
 //! Errori dell'API, restituiti al client come JSON `{ "error": "..." }`.
 
-use axum::extract::multipart::MultipartError;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum::extract::multipart::MultipartError;
+use axum::http::header::WWW_AUTHENTICATE;
+use axum::http::{HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("{0}")]
     BadRequest(String),
+    #[error("{0}")]
+    Unauthorized(String),
+    #[error("{0}")]
+    Conflict(String),
     #[error("risorsa non trovata")]
     NotFound,
     #[error(transparent)]
@@ -20,7 +25,9 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ApiError::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
-            ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            ApiError::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
+            ApiError::Conflict(message) => (StatusCode::CONFLICT, message),
+            ApiError::NotFound => (StatusCode::NOT_FOUND, "Risorsa non trovata".to_string()),
             ApiError::Internal(error) => {
                 tracing::error!("Errore interno: {error:#}");
                 (
@@ -30,7 +37,14 @@ impl IntoResponse for ApiError {
             }
         };
 
-        (status, Json(json!({ "error": message }))).into_response()
+        let mut response = (status, Json(json!({ "error": message }))).into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            // Indica al client che è richiesta l'autenticazione Bearer.
+            response
+                .headers_mut()
+                .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+        }
+        response
     }
 }
 

@@ -1,5 +1,6 @@
 //! Backend di Refugium: API per gli annunci di cani, costruita con Axum.
 
+mod auth;
 mod db;
 mod error;
 mod routes;
@@ -22,6 +23,7 @@ use crate::error::ApiError;
 pub struct AppState {
     pool: SqlitePool,
     uploads_dir: PathBuf,
+    auth: auth::Auth,
 }
 
 #[tokio::main]
@@ -36,8 +38,9 @@ async fn main() -> anyhow::Result<()> {
     // Configurazione via variabili d'ambiente (con valori predefiniti sensati).
     let db_url = std::env::var("REFUGIUM_DB_URL")
         .unwrap_or_else(|_| "sqlite://data/refugium.db?mode=rwc".to_string());
-    let uploads_dir =
-        PathBuf::from(std::env::var("REFUGIUM_UPLOADS_DIR").unwrap_or_else(|_| "data/uploads".to_string()));
+    let uploads_dir = PathBuf::from(
+        std::env::var("REFUGIUM_UPLOADS_DIR").unwrap_or_else(|_| "data/uploads".to_string()),
+    );
 
     // SQLite non crea le cartelle mancanti: preparale prima di connetterti.
     tokio::fs::create_dir_all(&uploads_dir).await?;
@@ -55,7 +58,11 @@ async fn main() -> anyhow::Result<()> {
     let pool = SqlitePool::connect(&db_url).await?;
     db::ensure_schema(&pool).await?;
 
-    let state = AppState { pool, uploads_dir };
+    let state = AppState {
+        pool,
+        uploads_dir,
+        auth: auth::Auth::from_env(),
+    };
 
     let app = Router::new()
         .nest("/api", routes::router())
